@@ -94,13 +94,17 @@ create_rootfs()
         ln -s busybox $COMMAND
     done
 
-    INITLXCFILE=$(which init.lxc)
-    if [ $? -ne 0 ]; then
-        echo "init.lxc not found"
-        return 1
-    fi
-    touch $rootfs/bin/init.lxc
-    chmod 755 $rootfs/bin/init.lxc
+#    INITLXCFILE=$(which init.lxc)
+#    if [ $? -ne 0 ]; then
+#        echo "init.lxc not found"
+#        return 1
+#    fi
+#    touch $rootfs/bin/init.lxc
+#    chmod 755 $rootfs/bin/init.lxc
+
+    INITLXCFILE=/home/vagrant/softwarecontainer/initprocesstesting/minimal-lxc/build/init
+    echo "lxc.mount.entry = /tmp tmp none rw,bind 0 0" >> $path/config
+    cp /home/vagrant/softwarecontainer/initprocesstesting/minimal-lxc/build/init $rootfs/sbin/
 
     # If we have network enabled, we need iptables
     if [ ${ENABLE_NETWORKGATEWAY} = "ON" ]; then
@@ -128,7 +132,7 @@ copy_configuration()
     echo "lxc.mount.entry = ${CMAKE_INSTALL_PREFIX} $rootfs/${CMAKE_INSTALL_PREFIX} none ro,bind 0 0" >> $path/config
 
     # Bind-mount the necessary binaries into the container
-    echo "lxc.mount.entry = $(which init.lxc) bin/init.lxc none ro,bind 0 0" >> $path/config
+#    echo "lxc.mount.entry = $(which init.lxc) bin/init.lxc none ro,bind 0 0" >> $path/config
     echo "lxc.mount.entry = $(which busybox) bin/busybox none ro,bind 0 0" >> $path/config
 
     if [ ${ENABLE_NETWORKGATEWAY} = "ON" ]; then

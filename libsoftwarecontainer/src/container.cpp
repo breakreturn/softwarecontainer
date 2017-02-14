@@ -276,12 +276,19 @@ bool Container::start(pid_t *pid)
     // For some reason the LXC start function does not work out
     log_debug() << "Starting container";
 
-    char commandEnv[] = "env";
-    char commandSleep[] = "/bin/sleep";
-    char commandSleepTime[] = "100000000";
-    char* const args[] = { commandEnv, commandSleep, commandSleepTime, nullptr };
+    char commandInit[] = "/sbin/init";
+    char *const args[] = {commandInit, NULL};
 
-    if (!m_container->start(m_container, false, args)) {
+    m_container->set_config_item(m_container, "lxc.logfile", "/tmp/lxc-log");
+    m_container->set_config_item(m_container, "lxc.loglevel", "debug");
+
+//    char commandEnv[] = "env";
+//    char commandSleep[] = "/bin/sleep";
+//    char commandSleepTime[] = "100000000";
+//    char* const args[] = { commandEnv, commandSleep, commandSleepTime, nullptr };
+//
+//    if (!m_container->start(m_container, false, args)) {
+    if (!m_container->start(m_container, 0, args)) {
         log_error() << "Error starting container";
         return false;
     }
@@ -513,7 +520,7 @@ bool Container::shutdown(unsigned int timeout)
     }
 
     // Shutdown with timeout
-    bool success = m_container->shutdown(m_container, timeout);
+    bool success = m_container->shutdown(m_container, 5);
     if (!success) {
         log_warning() << "Failed to cleanly shutdown container, forcing stop" << toString();
         if(!stop()) {
