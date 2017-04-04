@@ -20,12 +20,16 @@ import pytest
 
 import os
 import time
+import signal
 import subprocess
-import dbusapp
+
+from os import environ
 
 from testframework import Container
 from testframework import Capability
 from testframework import StandardManifest
+
+import dbusapp
 
 
 CURRENT_DIR = os.path.dirname(os.path.realpath(__file__))
@@ -77,6 +81,25 @@ WL_CONFIG = [{
     "dbus-gateway-config-system": []
 }]
 
+GW_CONFIG_DENY_ALL = [{
+    "dbus-gateway-config-session": [{
+        "direction": "",
+        "interface": "",
+        "object-path": "",
+        "method": ""
+    }],
+    "dbus-gateway-config-system": []
+}]
+
+GW_CONFIG_ALLOW_PING = [{
+    "dbus-gateway-config-session": [{
+        "direction": "outgoing",
+        "interface": "*",
+        "object-path": "*",
+        "method": ["Ping", "Introspect"]
+    }],
+    "dbus-gateway-config-system": []
+}]
 
 """ Cap with only GW_CONFIG"""
 test_cap_1 = Capability("test.cap.gwconfig",
@@ -90,9 +113,21 @@ test_cap_2 = Capability("test.cap.wlconfig",
                             {"id": "dbus", "config": WL_CONFIG}
                         ])
 
+""" Cap with only GW_CONFIG_DENY_ALL """
+test_cap_deny_all = Capability("test.cap.denyall",
+                               [
+                                    {"id": "dbus", "config": GW_CONFIG_DENY_ALL}
+                               ])
+
+""" Cap with only GW_CONFIG_ALLOW_PING """
+test_cap_allow_ping = Capability("test.cap.allowping",
+                                 [
+                                     {"id": "dbus", "config": GW_CONFIG_ALLOW_PING}
+                                 ])
+
 manifest = StandardManifest(TESTOUTPUT_DIR,
                             "dbus-test-manifest.json",
-                            [test_cap_1, test_cap_2])
+                            [test_cap_1, test_cap_2, test_cap_deny_all, test_cap_allow_ping])
 
 
 def service_manifests():
@@ -113,6 +148,72 @@ class TestDBus(object):
         e.g. stress testing and load testing, is better done here.
     """
 
+    def test_client_inside_reaches_outside_service(self):
+        """ Test that an app running inside a container can call allowed methods
+            on service outside of the container.
+
+            TODO: Clean me up!
+        """ 
+        c = Container()
+        service = subprocess.Popen(["python", CURRENT_DIR + "/dbusapp.py", "server"], env=environ.copy(), stdout=subprocess.PIPE)
+        try:
+            c.start(DATA)
+            c.set_capabilities(["test.cap.gwconfig"])
+            c.launch_command('{}/dbusapp.py client --method Ping'.format(c.get_bind_dir()))
+
+            time.sleep(0.5)
+
+            # TODO: This communicate shit doesn't seem to work at the moment...
+#            print "\nservice.poll(): ", service.poll()
+#            service.terminate()
+#            os.kill(service.pid, signal.SIGKILL)
+#            print "\nservice.poll(): ", service.poll()
+#            captured_stdout = service.communicate()[0]
+#
+#            assert "Hello" in captured_stdout
+
+            with open("service_output", "r") as fh:
+                content = fh.read()
+            assert "Hello" in content
+        finally:
+            c.terminate()
+            service.terminate()
+
+    def test_reconfiguration(self):
+        """ Test that a client inside a container can't initially call a method
+            on the service, and that it can call it after another more permissive
+            cap is set.
+
+            * Set a restrictive cap
+            * Assert client can't call method
+            * Set a more permissive cap
+            * Assert client can call method
+        """
+        c = Container()
+        service = subprocess.Popen(["python", CURRENT_DIR + "/dbusapp.py", "server"], env=environ.copy(), stdout=subprocess.PIPE)
+        try:
+            c.start(DATA)
+            c.set_capabilities(["test.cap.denyall"])
+            c.launch_command('{}/dbusapp.py client --method Ping'.format(c.get_bind_dir()))
+
+            time.sleep(0.5)
+
+            with open("service_output", "r") as fh:
+                content = fh.read()
+            assert "Hello" not in content
+
+            c.set_capabilities(["test.cap.allowping"])
+            c.launch_command('{}/dbusapp.py client --method Ping'.format(c.get_bind_dir()))
+
+            time.sleep(0.5)
+
+            with open("service_output", "r") as fh:
+                content = fh.read()
+            assert "Hello" in content
+        finally:
+            c.terminate()
+            service.terminate()
+  
     def test_query_in(self):
         """ Launch server in container and test if a client can communicate with it from the host system """
         for x in range(0, 10):
